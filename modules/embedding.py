@@ -17,7 +17,7 @@ def load_model():
         model = model.to(device)
         return model
     except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error(f"Error loading embedding model: {e}")
         return None
 
 @st.cache_resource

@@ -153,11 +153,17 @@ def batch_map_to_mitre(descriptions: List[str],
             for j, (score, idx) in enumerate(zip(best_scores, best_indices)):
                 best_tech = mitre_techniques[idx]
                 
+                # FIX: Convert tactic to Title Case
+                tactic_proper = ', '.join([t.title() for t in best_tech['tactics_list']])
+                
+                # FIX: Extract just the technique name instead of "ID - Name"
+                tech_name = best_tech['name']
+                
                 results.append((
-                    best_tech['tactic'], 
-                    f"{best_tech['id']} - {best_tech['name']}", 
+                    tactic_proper,  # Use properly capitalized tactic
+                    tech_name,      # Use just the technique name
                     best_tech['url'], 
-                    best_tech['tactics_list'], 
+                    [t.title() for t in best_tech['tactics_list']],  # Capitalize tactics in list
                     score
                 ))
                 
@@ -231,8 +237,24 @@ def process_mappings(df, _model, mitre_techniques, mitre_embeddings, library_df,
         
         if matched_row is not None:
             # Use library match
-            tactic = matched_row.get('Mapped MITRE Tactic(s)', 'N/A')
-            technique = matched_row.get('Mapped MITRE Technique(s)', 'N/A')
+            
+            # FIX: Ensure tactic names use Title Case
+            tactic_str = matched_row.get('Mapped MITRE Tactic(s)', 'N/A')
+            if tactic_str != 'N/A':
+                # Split by comma, capitalize each tactic, then rejoin
+                tactic_parts = [part.strip().title() for part in tactic_str.split(',')]
+                tactic = ', '.join(tactic_parts)
+            else:
+                tactic = 'N/A'
+                
+            # FIX: Extract just the technique name if it's in "ID - Name" format
+            technique_str = matched_row.get('Mapped MITRE Technique(s)', 'N/A')
+            if technique_str != 'N/A' and ' - ' in technique_str:
+                # Extract just the name part after the ID
+                technique = technique_str.split(' - ', 1)[1]
+            else:
+                technique = technique_str
+                
             reference = matched_row.get('Reference Resource(s)', 'N/A')
             tactics_list = tactic.split(', ') if tactic != 'N/A' else []
             confidence = match_score
@@ -246,10 +268,8 @@ def process_mappings(df, _model, mitre_techniques, mitre_embeddings, library_df,
             match_sources[i] = match_source
             match_scores[i] = round(match_score * 100, 2)
             
-            # Count techniques
-            if '-' in technique:
-                tech_id = technique.split('-')[0].strip()
-                techniques_count[tech_id] = techniques_count.get(tech_id, 0) + 1
+            # Count techniques (using normalized technique name)
+            techniques_count[technique] = techniques_count.get(technique, 0) + 1
         else:
             # Make sure we're not trying to map invalid descriptions
             if not (descriptions[i] == "No description available" or pd.isna(descriptions[i])):
@@ -281,9 +301,7 @@ def process_mappings(df, _model, mitre_techniques, mitre_embeddings, library_df,
                 match_scores[idx] = 0  # No library match score
                 
                 # Count techniques
-                if '-' in technique:
-                    tech_id = technique.split('-')[0].strip()
-                    techniques_count[tech_id] = techniques_count.get(tech_id, 0) + 1
+                techniques_count[technique] = techniques_count.get(technique, 0) + 1
  
     # Add results to dataframe
     df['Mapped MITRE Tactic(s)'] = tactics

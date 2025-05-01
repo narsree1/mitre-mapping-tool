@@ -5,6 +5,171 @@ import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import re
+
+# Function to standardize tactic names 
+def standardize_tactic_name(tactic):
+    """
+    Standardize tactic names to ensure consistent format.
+    This handles variations like 'command and control', 'Command-And-Control', etc.
+    
+    Args:
+        tactic: Original tactic name
+        
+    Returns:
+        Standardized tactic name
+    """
+    if not tactic or tactic == 'N/A':
+        return 'N/A'
+    
+    # Convert to lowercase for comparison
+    tactic_lower = tactic.lower()
+    
+    # Dictionary of standardized names
+    standard_names = {
+        'command and control': 'Command And Control',
+        'command-and-control': 'Command And Control',
+        'command&control': 'Command And Control',
+        'command_and_control': 'Command And Control',
+        'command-and-control': 'Command And Control',
+        'commandand control': 'Command And Control',
+        'command & control': 'Command And Control',
+        'commandcontrol': 'Command And Control',
+        
+        'discovery': 'Discovery',
+        
+        'execution': 'Execution',
+        
+        'privilege escalation': 'Privilege Escalation',
+        'privilegeescalation': 'Privilege Escalation',
+        'privilege_escalation': 'Privilege Escalation',
+        
+        'initial access': 'Initial Access',
+        'initialaccess': 'Initial Access',
+        'initial-access': 'Initial Access',
+        'initial_access': 'Initial Access',
+        
+        'persistence': 'Persistence',
+        
+        'credential access': 'Credential Access',
+        'credentialaccess': 'Credential Access',
+        'credential-access': 'Credential Access',
+        'credential_access': 'Credential Access',
+        
+        'lateral movement': 'Lateral Movement',
+        'lateralmovement': 'Lateral Movement',
+        'lateral-movement': 'Lateral Movement',
+        'lateral_movement': 'Lateral Movement',
+        
+        'defense evasion': 'Defense Evasion',
+        'defenseevasion': 'Defense Evasion',
+        'defense-evasion': 'Defense Evasion',
+        'defense_evasion': 'Defense Evasion',
+        
+        'collection': 'Collection',
+        
+        'impact': 'Impact',
+        
+        'exfiltration': 'Exfiltration',
+        
+        'resource development': 'Resource Development',
+        'resourcedevelopment': 'Resource Development',
+        'resource-development': 'Resource Development',
+        'resource_development': 'Resource Development',
+        
+        'reconnaissance': 'Reconnaissance'
+    }
+    
+    # Try to match with standardized names
+    for pattern, standard in standard_names.items():
+        if tactic_lower == pattern:
+            return standard
+    
+    # If not found in dictionary, use Title Case
+    return ' '.join(word.capitalize() for word in tactic_lower.split())
+
+# Function to standardize technique names
+def standardize_technique_name(technique):
+    """
+    Standardize technique names to ensure consistent format.
+    Handles variations in capitalization, spacing, and removes IDs.
+    
+    Args:
+        technique: Original technique name
+        
+    Returns:
+        Standardized technique name
+    """
+    if not technique or technique == 'N/A':
+        return 'N/A'
+    
+    # If it has the format "T#### - Name", extract just the name
+    if ' - ' in technique and technique.split(' - ')[0].startswith('T'):
+        technique = technique.split(' - ', 1)[1]
+    
+    # Convert to lowercase for comparison
+    technique_lower = technique.lower()
+    
+    # Dictionary of common technique name variations
+    standard_techniques = {
+        'brute force': 'Brute Force',
+        'bruteforce': 'Brute Force',
+        'brute-force': 'Brute Force',
+        
+        'powershell': 'PowerShell',
+        'power shell': 'PowerShell',
+        'power-shell': 'PowerShell',
+        
+        'command and scripting interpreter': 'Command and Scripting Interpreter',
+        'command & scripting interpreter': 'Command and Scripting Interpreter',
+        
+        'modify registry': 'Modify Registry',
+        'registry modification': 'Modify Registry',
+        
+        'credential dumping': 'Credential Dumping',
+        'credential dump': 'Credential Dumping',
+        
+        'phishing': 'Phishing',
+        'spear phishing': 'Phishing',
+        
+        'data exfiltration': 'Data Exfiltration',
+        'exfiltration over alternative protocol': 'Exfiltration Over Alternative Protocol',
+        'dns exfiltration': 'Exfiltration Over Alternative Protocol: DNS',
+        'dns tunneling': 'Exfiltration Over Alternative Protocol: DNS',
+        'exfiltration over dns': 'Exfiltration Over Alternative Protocol: DNS',
+        
+        'execution through api': 'Execution Through API',
+        'api execution': 'Execution Through API',
+        
+        'scheduled task': 'Scheduled Task/Job',
+        'scheduled tasks': 'Scheduled Task/Job',
+        'scheduled job': 'Scheduled Task/Job',
+        'scheduled task/job': 'Scheduled Task/Job',
+        
+        'valid accounts': 'Valid Accounts',
+        'valid account': 'Valid Accounts',
+        
+        'pass the hash': 'Pass the Hash',
+        'passthehash': 'Pass the Hash',
+        'pass-the-hash': 'Pass the Hash',
+        
+        'multi-hop proxy': 'Multi-hop Proxy',
+        'multihop proxy': 'Multi-hop Proxy',
+        'multi hop proxy': 'Multi-hop Proxy',
+        
+        'office application startup': 'Office Application Startup',
+        
+        'process injection': 'Process Injection',
+    }
+    
+    # Try to match with standardized names
+    for pattern, standard in standard_techniques.items():
+        if technique_lower == pattern:
+            return standard
+    
+    # If not found in dictionary, use the original with proper Title Case
+    return ' '.join(word.capitalize() if word.lower() not in ['and', 'or', 'the', 'in', 'on', 'at', 'to'] 
+                   else word.lower() for word in technique.split())
 
 def create_metrics_display(num_use_cases, covered_techniques, coverage_percent, library_matches, model_matches):
     """
@@ -99,7 +264,7 @@ def create_tactic_chart(df):
     if df is None or 'Mapped MITRE Tactic(s)' not in df.columns:
         return None
         
-    # Create data for tactic coverage
+    # Create data for tactic coverage with standardization
     tactic_counts = {}
     for _, row in df.iterrows():
         tactic_str = row.get('Mapped MITRE Tactic(s)', '')
@@ -108,7 +273,9 @@ def create_tactic_chart(df):
             
         for tactic in str(tactic_str).split(', '):
             if tactic and tactic != 'N/A':
-                tactic_counts[tactic] = tactic_counts.get(tactic, 0) + 1
+                # Standardize tactic name before counting
+                standard_tactic = standardize_tactic_name(tactic)
+                tactic_counts[standard_tactic] = tactic_counts.get(standard_tactic, 0) + 1
     
     # Transform to dataframe for visualization
     tactic_df = pd.DataFrame({
@@ -152,28 +319,17 @@ def create_technique_chart(df, techniques_count, mitre_techniques):
     if not techniques_count:
         return None
         
-    # Get top techniques for the chart (limiting to top 10 for readability)
-    technique_ids = list(techniques_count.keys())
-    technique_counts = list(techniques_count.values())
-    
-    # Get technique names - with improved extraction to fix "Multi:unknown" issue
-    technique_names = []
-    for tech_id in technique_ids:
-        # Find the full technique information in the processed data
-        full_tech_info = None
-        for _, row in df.iterrows():
-            technique = row.get('Mapped MITRE Technique(s)', '')
-            if not pd.isna(technique) and tech_id in technique:
-                full_tech_info = technique
-                break
+    # Standardize technique names in the count dictionary
+    standardized_counts = {}
+    for tech_name, count in techniques_count.items():
+        standard_name = standardize_technique_name(tech_name)
+        standardized_counts[standard_name] = standardized_counts.get(standard_name, 0) + count
         
-        # If found in the data, use the full name; otherwise, look for it in mitre_techniques
-        if full_tech_info:
-            technique_names.append(full_tech_info)
-        else:
-            tech_name = next((t['name'] for t in mitre_techniques if t['id'] == tech_id), tech_id)
-            technique_names.append(f"{tech_id} - {tech_name}")
+    # Get top techniques for the chart (limiting to top 10 for readability)
+    technique_names = list(standardized_counts.keys())
+    technique_counts = list(standardized_counts.values())
     
+    # Create dataframe for visualization
     technique_df = pd.DataFrame({
         'Technique': technique_names,
         'Count': technique_counts
@@ -209,13 +365,51 @@ def create_navigator_layer(techniques_count):
         layer_id: Unique ID for the layer
     """
     try:
+        # Standardize technique names in the count dictionary
+        standardized_counts = {}
+        for tech_name, count in techniques_count.items():
+            standard_name = standardize_technique_name(tech_name)
+            standardized_counts[standard_name] = standardized_counts.get(standard_name, 0) + count
+            
+        # Common technique names to IDs mapping
+        # This is a simplified mapping - in production you would have a complete mapping
+        technique_to_id = {
+            'Brute Force': 'T1110',
+            'PowerShell': 'T1059.001',
+            'Command and Scripting Interpreter': 'T1059',
+            'Modify Registry': 'T1112',
+            'Credential Dumping': 'T1003',
+            'Phishing': 'T1566',
+            'Exfiltration Over Alternative Protocol': 'T1048',
+            'Exfiltration Over Alternative Protocol: DNS': 'T1048.003',
+            'Execution Through API': 'T1106',
+            'Scheduled Task/Job': 'T1053',
+            'Valid Accounts': 'T1078',
+            'Pass the Hash': 'T1550.002',
+            'Multi-hop Proxy': 'T1090.003',
+            'Office Application Startup': 'T1137',
+            'Process Injection': 'T1055'
+        }
+        
         techniques_data = []
-        for tech_id, count in techniques_count.items():
+        for tech_name, count in standardized_counts.items():
+            # Try to find technique ID
+            tech_id = technique_to_id.get(tech_name)
+            
+            # If it's already in ID format, use it directly
+            if not tech_id and tech_name.startswith('T') and tech_name[1:].isdigit():
+                tech_id = tech_name
+                
+            # If we still don't have an ID, use a placeholder
+            if not tech_id:
+                # For now, use a generic ID as placeholder
+                tech_id = "T9999"
+                
             techniques_data.append({
                 "techniqueID": tech_id,
                 "score": count,
                 "color": "",
-                "comment": f"Count: {count}",
+                "comment": f"{tech_name}: {count}",
                 "enabled": True,
                 "metadata": [],
                 "links": [],
@@ -251,7 +445,7 @@ def create_navigator_layer(techniques_count):
             "gradient": {
                 "colors": ["#ffffff", "#66b1ff", "#0d4a90"],
                 "minValue": 0,
-                "maxValue": max(techniques_count.values()) if techniques_count else 1
+                "maxValue": max(standardized_counts.values()) if standardized_counts else 1
             },
             "legendItems": [],
             "metadata": [],
